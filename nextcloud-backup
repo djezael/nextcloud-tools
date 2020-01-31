@@ -13,21 +13,38 @@ dbpwd=$(grep dbpassword $ncdir/config/config.php | awk -F "'" '{print $4}')
 dbname=$(grep dbname $ncdir/config/config.php | awk -F "'" '{print $4}')
 
 ## Functions ##
+# Printing header #
+print_head()
+{
+	echo -e "\n---------------------------------------------" >>$bkplog
+	echo -e "----- Backup start: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----" >>$bkplog
+}
+
+# Printing footer #
+print_foot()
+{
+	echo -e "----- Backup end: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----" >>$bkplog
+}
+
 # Setting maintenance mode on Nextcloud instance #
 maint_mode()
 {
+	mode=$1
+	printf '%s\n' "$mode" | awk '{ print toupper($0) }'
+	echo -e "--- Maintenance mode $mode ---" >>$bkplog
 	sudo -u www-data php $ncdir/occ maintenance:mode --$1 >>$bkplog 2>&1
 	if [ $? -ne 0 ] ; then
-		echo "-> Setting maintenance mode '$1': Failed! (exit code: $?)" >>$bklog
+		echo "-> Setting maintenance mode '$mode': Failed! (exit code: $?)" >>$bklog
 		exit 1
 	else
-		echo "-> Setting maintenance mode '$1': OK" >>$bkplog
+		echo "-> Setting maintenance mode '$mode': OK" >>$bkplog
 	fi
 }
 
 # MySQL database export #
 db_dump()
 {
+	echo -e "\n--- DataBase Export ---" >>$bkplog
 	mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > $bkpdst/nextcloud-sqlbkp_$bkpdate.sql 2>>$bkplog
 	if [ $? -ne 0 ] ; then
 		echo "-> DataBase export: Failed! (exit code: $?)" >>$bkplog
@@ -40,6 +57,7 @@ db_dump()
 # Folder archival #
 folder_archive()
 {
+	echo -e "\n--- Folder archival ---" >>$bkplog
 	tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --exclude="$direxcl*" $ncdir/ 2>>$bkplog
 	if [ $? -ne 0 ] ; then
 		echo "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
@@ -50,15 +68,10 @@ folder_archive()
 }
 
 ## Main ##
-echo -e "\n---------------------------------------------" >>$bkplog
-echo -e "----- Backup start: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----" >>$bkplog
-echo -e "--- Maintenance mode ON ---" >>$bkplog
+print_head
 maint_mode on
-echo -e "\n--- DataBase Export ---" >>$bkplog
 db_dump
-echo -e "\n--- Folder archival ---" >>$bkplog
 folder_archive
-echo -e "\n--- Maintenance mode OFF ---" >>$bkplog
 maint_mode off
-echo -e "----- Backup end: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----" >>$bkplog
+print_foot
 exit 0
