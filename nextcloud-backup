@@ -64,6 +64,7 @@ db_dump()
 			echo -e "-> DataBase export: Failed! (exit code: $?)" >>$bkplog
 			exit 1
 		else
+			ls -l $bkpdst/nextcloud-sqlbkp_$bkpdate.sql | awk -F " " '{print $5,$9}' >>$bkplog
 			echo -e "-> DataBase export: OK" >>$bkplog
 		fi
 	fi
@@ -79,6 +80,7 @@ folder_archive()
 			echo -e "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
 			exit 1
 		else
+			ls -l $bkpdst/nextcloud-dirbkp_$bkpdate.tgz | awk -F " " '{print $5,$9}' >>$bkplog
 			echo -e "-> Folder archive: OK" >>$bkplog
 		fi
 	fi
