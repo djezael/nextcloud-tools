@@ -15,6 +15,15 @@ dbpwd=$(grep dbpassword $ncdir/config/config.php | awk -F "'" '{print $4}')
 dbname=$(grep dbname $ncdir/config/config.php | awk -F "'" '{print $4}')
 
 ## Functions ##
+# Script usage #
+usage()
+{
+	scriptname=$(basename $0)
+	echo -e "Usage: $scriptname [-d]" 1>&2
+	echo -e " -d: dry-run"
+	exit 1
+}
+
 # Print to log #
 print_log()
 {
@@ -37,10 +46,10 @@ maint_mode()
 	if [ "$dryrun" == "no"  ] ; then
 		sudo -u www-data php $ncdir/occ maintenance:mode --$1 >>$bkplog 2>&1
 		if [ $? -ne 0 ] ; then
-			echo "-> Setting maintenance mode '$mode': Failed! (exit code: $?)" >>$bkplog
+			echo -e "-> Setting maintenance mode '$mode': Failed! (exit code: $?)" >>$bkplog
 			exit 1
 		else
-			echo "-> Setting maintenance mode '$mode': OK" >>$bkplog
+			echo -e "-> Setting maintenance mode '$mode': OK" >>$bkplog
 		fi
 	fi
 }
@@ -52,10 +61,10 @@ db_dump()
 	if [ "$dryrun" == "no"  ] ; then
 		mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > $bkpdst/nextcloud-sqlbkp_$bkpdate.sql 2>>$bkplog
 		if [ $? -ne 0 ] ; then
-			echo "-> DataBase export: Failed! (exit code: $?)" >>$bkplog
+			echo -e "-> DataBase export: Failed! (exit code: $?)" >>$bkplog
 			exit 1
 		else
-			echo "-> DataBase export: OK" >>$bkplog
+			echo -e "-> DataBase export: OK" >>$bkplog
 		fi
 	fi
 }
@@ -67,21 +76,25 @@ folder_archive()
 	if [ "$dryrun" == "no" ] ; then
 		tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --exclude="$direxcl*" $ncdir/ 2>>$bkplog
 		if [ $? -ne 0 ] ; then
-			echo "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
+			echo -e "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
 			exit 1
 		else
-			echo "-> Folder archive: OK" >>$bkplog
+			echo -e "-> Folder archive: OK" >>$bkplog
 		fi
 	fi
 }
 
 ## Main ##
-while getopts "d" option
+while getopts ":d" option
 do
 	case $option in
 		d)
 			dryrun="yes"
 			D="DRY-RUN"
+			;;
+		*)
+			echo -e "$OPTARG: invalid option\n"
+			usage
 			;;
 	esac
 done
