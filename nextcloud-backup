@@ -1,6 +1,8 @@
 #!/bin/bash
-#
+
 ## Variables ##
+dryrun="no"
+D="-------"
 bkpdate=$(date +"%Y%m%d")
 bkplog="/var/log/backups/$bkpdate.log"
 bkpdst="/mnt/backups"
@@ -11,27 +13,27 @@ dbport=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F
 dbuser=$(grep dbuser $ncdir/config/config.php | awk -F "'" '{print $4}')
 dbpwd=$(grep dbpassword $ncdir/config/config.php | awk -F "'" '{print $4}')
 dbname=$(grep dbname $ncdir/config/config.php | awk -F "'" '{print $4}')
-dryrun="yes"
 
 ## Functions ##
-# Printing header #
-print_head()
+# Print to log #
+print_log()
 {
-	echo -e "\n---------------------------------------------" >>$bkplog
-	echo -e "----- Backup start: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----" >>$bkplog
-}
-
-# Printing footer #
-print_foot()
-{
-	echo -e "----- Backup end: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----" >>$bkplog
+	delimiter="----------------$D-----------------------"
+	logstamp="----- Backup $1: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----"
+	case $1 in
+		start)
+			echo -e "\n$delimiter\n$logstamp" >>$bkplog
+			;;
+		end)
+			echo -e "\n$logstamp\n$delimiter\n" >>$bkplog
+	esac
 }
 
 # Setting maintenance mode on Nextcloud instance #
 maint_mode()
 {
 	mode=$(printf '%s\n' "$1" | awk '{ print toupper($0) }')
-	echo -e "--- Maintenance mode $mode ---" >>$bkplog
+	echo -e "\n--- Maintenance mode $mode ---" >>$bkplog
 	if [ "$dryrun" == "no"  ] ; then
 		sudo -u www-data php $ncdir/occ maintenance:mode --$1 >>$bkplog 2>&1
 		if [ $? -ne 0 ] ; then
@@ -74,10 +76,20 @@ folder_archive()
 }
 
 ## Main ##
-print_head
+while getopts "d" option
+do
+	case $option in
+		d)
+			dryrun="yes"
+			D="DRY-RUN"
+			;;
+	esac
+done
+
+print_log start
 maint_mode on
 db_dump
 folder_archive
 maint_mode off
-print_foot
+print_log end
 exit 0
