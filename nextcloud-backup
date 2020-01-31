@@ -1,0 +1,64 @@
+#!/bin/bash
+#
+## Variables ##
+bkpdate=$(date +"%Y%m%d")
+bkplog="/var/log/backups/$bkpdate.log"
+bkpdst="/mnt/backups"
+ncdir="/srv/www/nextcloud"
+direxcl="$ncdir/data/updater-"
+dbhost=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $1}')
+dbport=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $2}')
+dbuser=$(grep dbuser $ncdir/config/config.php | awk -F "'" '{print $4}')
+dbpwd=$(grep dbpassword $ncdir/config/config.php | awk -F "'" '{print $4}')
+dbname=$(grep dbname $ncdir/config/config.php | awk -F "'" '{print $4}')
+
+## Functions ##
+# Setting maintenance mode on Nextcloud instance #
+maint_mode()
+{
+	sudo -u www-data php $ncdir/occ maintenance:mode --$1 >>$bkplog 2>&1
+	if [ $? -ne 0 ] ; then
+		echo "-> Setting maintenance mode '$1': Failed! (exit code: $?)" >>$bklog
+		exit 1
+	else
+		echo "-> Setting maintenance mode '$1': OK" >>$bkplog
+	fi
+}
+
+# MySQL database export #
+db_dump()
+{
+	mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > $bkpdst/nextcloud-sqlbkp_$bkpdate.sql 2>>$bkplog
+	if [ $? -ne 0 ] ; then
+		echo "-> DataBase export: Failed! (exit code: $?)" >>$bkplog
+		exit 1
+	else
+		echo "-> DataBase export: OK" >>$bkplog
+	fi
+}
+
+# Folder archival #
+folder_archive()
+{
+	tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --exclude="$direxcl*" $ncdir/ 2>>$bkplog
+	if [ $? -ne 0 ] ; then
+		echo "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
+		exit 1
+	else
+		echo "-> Folder archive: OK" >>$bkplog
+	fi
+}
+
+## Main ##
+echo -e "\n---------------------------------------------" >>$bkplog
+echo -e "----- Backup start: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----" >>$bkplog
+echo -e "--- Maintenance mode ON ---" >>$bkplog
+maint_mode on
+echo -e "\n--- DataBase Export ---" >>$bkplog
+db_dump
+echo -e "\n--- Folder archival ---" >>$bkplog
+folder_archive
+echo -e "\n--- Maintenance mode OFF ---" >>$bkplog
+maint_mode off
+echo -e "----- Backup end: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----" >>$bkplog
+exit 0
