@@ -11,6 +11,7 @@ dbport=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F
 dbuser=$(grep dbuser $ncdir/config/config.php | awk -F "'" '{print $4}')
 dbpwd=$(grep dbpassword $ncdir/config/config.php | awk -F "'" '{print $4}')
 dbname=$(grep dbname $ncdir/config/config.php | awk -F "'" '{print $4}')
+dryrun="yes"
 
 ## Functions ##
 # Printing header #
@@ -29,15 +30,16 @@ print_foot()
 # Setting maintenance mode on Nextcloud instance #
 maint_mode()
 {
-	mode=$1
-	printf '%s\n' "$mode" | awk '{ print toupper($0) }'
+	mode=$(printf '%s\n' "$1" | awk '{ print toupper($0) }')
 	echo -e "--- Maintenance mode $mode ---" >>$bkplog
-	sudo -u www-data php $ncdir/occ maintenance:mode --$1 >>$bkplog 2>&1
-	if [ $? -ne 0 ] ; then
-		echo "-> Setting maintenance mode '$mode': Failed! (exit code: $?)" >>$bklog
-		exit 1
-	else
-		echo "-> Setting maintenance mode '$mode': OK" >>$bkplog
+	if [ "$dryrun" == "no"  ] ; then
+		sudo -u www-data php $ncdir/occ maintenance:mode --$1 >>$bkplog 2>&1
+		if [ $? -ne 0 ] ; then
+			echo "-> Setting maintenance mode '$mode': Failed! (exit code: $?)" >>$bkplog
+			exit 1
+		else
+			echo "-> Setting maintenance mode '$mode': OK" >>$bkplog
+		fi
 	fi
 }
 
@@ -45,12 +47,14 @@ maint_mode()
 db_dump()
 {
 	echo -e "\n--- DataBase Export ---" >>$bkplog
-	mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > $bkpdst/nextcloud-sqlbkp_$bkpdate.sql 2>>$bkplog
-	if [ $? -ne 0 ] ; then
-		echo "-> DataBase export: Failed! (exit code: $?)" >>$bkplog
-		exit 1
-	else
-		echo "-> DataBase export: OK" >>$bkplog
+	if [ "$dryrun" == "no"  ] ; then
+		mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > $bkpdst/nextcloud-sqlbkp_$bkpdate.sql 2>>$bkplog
+		if [ $? -ne 0 ] ; then
+			echo "-> DataBase export: Failed! (exit code: $?)" >>$bkplog
+			exit 1
+		else
+			echo "-> DataBase export: OK" >>$bkplog
+		fi
 	fi
 }
 
@@ -58,12 +62,14 @@ db_dump()
 folder_archive()
 {
 	echo -e "\n--- Folder archival ---" >>$bkplog
-	tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --exclude="$direxcl*" $ncdir/ 2>>$bkplog
-	if [ $? -ne 0 ] ; then
-		echo "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
-		exit 1
-	else
-		echo "-> Folder archive: OK" >>$bkplog
+	if [ "$dryrun" == "no" ] ; then
+		tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --exclude="$direxcl*" $ncdir/ 2>>$bkplog
+		if [ $? -ne 0 ] ; then
+			echo "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
+			exit 1
+		else
+			echo "-> Folder archive: OK" >>$bkplog
+		fi
 	fi
 }
 
