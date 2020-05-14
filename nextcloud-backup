@@ -7,7 +7,7 @@ bkpdate=$(date +"%Y%m%d")
 bkplog="/var/log/backups/$bkpdate.log"
 bkpdst="/mnt/backups"
 ncdir="/srv/www/nextcloud"
-direxcl="$ncdir/data/updater-"
+direxcl="*/data/updater-*"
 dbhost=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $1}')
 dbport=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $2}')
 dbuser=$(grep dbuser $ncdir/config/config.php | awk -F "'" '{print $4}')
@@ -75,7 +75,7 @@ folder_archive()
 {
 	echo -e "\n--- Folder archival ---" >>$bkplog
 	if [ "$dryrun" == "no" ] ; then
-		tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --exclude="$direxcl*" $ncdir/ 2>>$bkplog
+		tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --directory="$ncdir" --exclude="$direxcl" . 2>>$bkplog
 		if [ $? -ne 0 ] ; then
 			echo -e "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
 			exit 1
