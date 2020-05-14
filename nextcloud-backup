@@ -42,14 +42,14 @@ print_log()
 maint_mode()
 {
 	mode=$(printf '%s\n' "$1" | awk '{ print toupper($0) }')
-	echo -e "\n--- Maintenance mode $mode ---" >>$bkplog
+	echo -e "\n[INFO] Maintenance mode $mode" >>$bkplog
 	if [ "$dryrun" == "no"  ] ; then
 		sudo -u www-data php $ncdir/occ maintenance:mode --$1 >>$bkplog 2>&1
 		if [ $? -ne 0 ] ; then
-			echo -e "-> Setting maintenance mode '$mode': Failed! (exit code: $?)" >>$bkplog
+			echo -e "[ERROR] Setting maintenance mode '$mode' failed (exit code: $?)" >>$bkplog
 			exit 1
 		else
-			echo -e "-> Setting maintenance mode '$mode': OK" >>$bkplog
+			echo -e "[OK] Setting maintenance mode '$mode' succeeded" >>$bkplog
 		fi
 	fi
 }
@@ -57,15 +57,15 @@ maint_mode()
 # MySQL database export #
 db_dump()
 {
-	echo -e "\n--- DataBase Export ---" >>$bkplog
+	echo -e "\n[INFO] DataBase Export" >>$bkplog
 	if [ "$dryrun" == "no"  ] ; then
 		mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > $bkpdst/nextcloud-sqlbkp_$bkpdate.sql 2>>$bkplog
 		if [ $? -ne 0 ] ; then
-			echo -e "-> DataBase export: Failed! (exit code: $?)" >>$bkplog
+			echo -e "[ERROR] DataBase export failed (exit code: $?)" >>$bkplog
 			exit 1
 		else
 			ls -l $bkpdst/nextcloud-sqlbkp_$bkpdate.sql | awk -F " " '{print $5,$9}' >>$bkplog
-			echo -e "-> DataBase export: OK" >>$bkplog
+			echo -e "[OK] DataBase export succeeded" >>$bkplog
 		fi
 	fi
 }
@@ -73,15 +73,15 @@ db_dump()
 # Folder archival #
 folder_archive()
 {
-	echo -e "\n--- Folder archival ---" >>$bkplog
+	echo -e "\n[INFO] Folder archival" >>$bkplog
 	if [ "$dryrun" == "no" ] ; then
 		tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --directory="$ncdir" --exclude="$direxcl" . 2>>$bkplog
 		if [ $? -ne 0 ] ; then
-			echo -e "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
+			echo -e "[ERROR] Folder archive failed (exit code: $?)" >>$bkplog
 			exit 1
 		else
 			ls -l $bkpdst/nextcloud-dirbkp_$bkpdate.tgz | awk -F " " '{print $5,$9}' >>$bkplog
-			echo -e "-> Folder archive: OK" >>$bkplog
+			echo -e "[OK] Folder archive succeeded" >>$bkplog
 		fi
 	fi
 }
