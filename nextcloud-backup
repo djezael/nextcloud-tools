@@ -4,6 +4,7 @@
 scriptdir=$(dirname $0)
 scriptname=$(basename $0)
 D="-------"
+testmode="no"
 database="no"
 folder="no"
 maintmode="no"
