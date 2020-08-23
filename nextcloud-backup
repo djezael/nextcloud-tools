@@ -1,27 +1,31 @@
 #!/bin/bash
 
 ## Variables ##
-dryrun="no"
+scriptdir=$(dirname $0)
+scriptname=$(basename $0)
 D="-------"
+testmode="no"
+database="no"
+folder="no"
+maintmode="no"
 bkpdate=$(date +"%Y%m%d")
-bkplog="/var/log/backups/$bkpdate.log"
-bkpdst="/mnt/backups"
-ncdir="/srv/www/nextcloud"
-direxcl="$ncdir/data/updater-"
-dbhost=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $1}')
-dbport=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $2}')
-dbuser=$(grep dbuser $ncdir/config/config.php | awk -F "'" '{print $4}')
-dbpwd=$(grep dbpassword $ncdir/config/config.php | awk -F "'" '{print $4}')
-dbname=$(grep dbname $ncdir/config/config.php | awk -F "'" '{print $4}')
+
+## Parameters ##
+if [ -f ${scriptdir}/${scriptname}.conf ] ; then
+	. ${scriptdir}/${scriptname}.conf
+else
+	echo -e "ERROR: Parameter file (${scriptdir}/${scriptname}.conf) not found!"
+fi
 
 ## Functions ##
 # Script usage #
 usage()
 {
-	scriptname=$(basename $0)
-	echo -e "Usage: $scriptname [-d]" 1>&2
-	echo -e " -d: dry-run"
-	exit 1
+	echo -e "Usage: ${scriptname} [-d] [-f] [-m] [-t]" 1>&2
+	echo -e " -d: dumping the nextcloud database"
+	echo -e " -f: archiving the nextcloud folder"
+	echo -e " -m: setting maintenance mode on before backup and off after"
+	echo -e " -t: running in testmode (simulating the backup)"
 }
 
 # Print to log #
@@ -30,11 +34,8 @@ print_log()
 	delimiter="----------------$D-----------------------"
 	logstamp="----- Backup $1: $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----"
 	case $1 in
-		start)
-			echo -e "\n$delimiter\n$logstamp" >>$bkplog
-			;;
-		end)
-			echo -e "\n$logstamp\n$delimiter\n" >>$bkplog
+		start)	echo -e "\n$delimiter\n$logstamp" >>$bkplog ;;
+		end)	echo -e "\n$logstamp\n$delimiter\n" >>$bkplog ;;
 	esac
 }
 
@@ -42,14 +43,14 @@ print_log()
 maint_mode()
 {
 	mode=$(printf '%s\n' "$1" | awk '{ print toupper($0) }')
-	echo -e "\n--- Maintenance mode $mode ---" >>$bkplog
-	if [ "$dryrun" == "no"  ] ; then
+	echo -e "\n[INFO] Maintenance mode $mode" >>$bkplog
+	if [ "$testmode" == "no"  ] ; then
 		sudo -u www-data php $ncdir/occ maintenance:mode --$1 >>$bkplog 2>&1
 		if [ $? -ne 0 ] ; then
-			echo -e "-> Setting maintenance mode '$mode': Failed! (exit code: $?)" >>$bkplog
+			echo -e "[ERROR] Setting maintenance mode '$mode' failed (exit code: $?)" >>$bkplog
 			exit 1
 		else
-			echo -e "-> Setting maintenance mode '$mode': OK" >>$bkplog
+			echo -e "[OK] Setting maintenance mode '$mode' succeeded" >>$bkplog
 		fi
 	fi
 }
@@ -57,15 +58,15 @@ maint_mode()
 # MySQL database export #
 db_dump()
 {
-	echo -e "\n--- DataBase Export ---" >>$bkplog
-	if [ "$dryrun" == "no"  ] ; then
+	echo -e "\n[INFO] DataBase Export" >>$bkplog
+	if [ "$testmode" == "no"  ] ; then
 		mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > $bkpdst/nextcloud-sqlbkp_$bkpdate.sql 2>>$bkplog
 		if [ $? -ne 0 ] ; then
-			echo -e "-> DataBase export: Failed! (exit code: $?)" >>$bkplog
+			echo -e "[ERROR] DataBase export failed (exit code: $?)" >>$bkplog
 			exit 1
 		else
 			ls -l $bkpdst/nextcloud-sqlbkp_$bkpdate.sql | awk -F " " '{print $5,$9}' >>$bkplog
-			echo -e "-> DataBase export: OK" >>$bkplog
+			echo -e "[OK] DataBase export succeeded" >>$bkplog
 		fi
 	fi
 }
@@ -73,38 +74,39 @@ db_dump()
 # Folder archival #
 folder_archive()
 {
-	echo -e "\n--- Folder archival ---" >>$bkplog
-	if [ "$dryrun" == "no" ] ; then
-		tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --exclude="$direxcl*" $ncdir/ 2>>$bkplog
+	echo -e "\n[INFO] Folder archival" >>$bkplog
+	if [ "$testmode" == "no" ] ; then
+		tar -czf $bkpdst/nextcloud-dirbkp_$bkpdate.tgz --directory="$ncdir" --exclude="$direxcl" . 2>>$bkplog
 		if [ $? -ne 0 ] ; then
-			echo -e "-> Folder archive: Failed! (exit code: $?)" >>$bkplog
+			echo -e "[ERROR] Folder archive failed (exit code: $?)" >>$bkplog
 			exit 1
 		else
 			ls -l $bkpdst/nextcloud-dirbkp_$bkpdate.tgz | awk -F " " '{print $5,$9}' >>$bkplog
-			echo -e "-> Folder archive: OK" >>$bkplog
+			echo -e "[OK] Folder archive succeeded" >>$bkplog
 		fi
 	fi
 }
 
 ## Main ##
-while getopts ":d" option
+while getopts ":dfmt" option
 do
 	case $option in
-		d)
-			dryrun="yes"
-			D="DRY-RUN"
-			;;
+		d)	database="yes" ;;
+		f)	folder="yes" ;;
+		m)	maintmode="yes" ;;	
+		t)	testmode="yes" ; D="DRY-RUN" ;;
 		*)
 			echo -e "$OPTARG: invalid option\n"
 			usage
+			exit 2
 			;;
 	esac
 done
 
 print_log start
-maint_mode on
-db_dump
-folder_archive
-maint_mode off
+if [ "$maintmode" == "yes" ] ; then maint_mode on ; fi
+if [ "$database" == "yes" ] ; then db_dump ; fi
+if [ "$folder" == "yes" ] ; then folder_archive ; fi
+if [ "$maintmode" == "yes" ] ; then maint_mode off ; fi
 print_log end
 exit 0
