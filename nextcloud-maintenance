@@ -24,10 +24,11 @@ dbname=$(grep dbname $ncdir/config/config.php | awk -F "'" '{print $4}')
 # Script usage #
 usage()
 {
-	echo -e "Usage: $(basename $0) [-b all|database|folder] [-m on|off] [-t] [-v]"
+	echo -e "Usage: $(basename $0) [-b all|database|folder] [-m on|off] [-t] [-u] [-v]"
 	echo -e " -b: backup mode"
 	echo -e " -m: maintenance mode"
 	echo -e " -t: test mode (do not execute the operations)"
+	echo -e " -u: update (execute updater.phar)"
 	echo -e " -v: verbose mode (display output to stdout in addition to logs)"
 }
 
@@ -91,17 +92,33 @@ maint_mode()
 	fi
 }
 
+# Updater #
+update_phar()
+{
+	log "[INFO] Updating"
+	if [ "$testmode" == "no" ] ; then
+		sudo -u www-data php $ncdir/updater/updater.phar | tee -a ${logdir}/${date}.log
+		if [ $? -ne 0 ] ; then
+			log "[ERROR] Update failed (exit code: $?)"
+			exit 1
+		else
+			log "[OK] Update succeeded"
+		fi
+	fi
+}
+
 ## Main ##
 touch ${logdir}/${date}.log
 log "\n----- $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----"
 
 # Options and arguments parsing #
-while getopts ":b:m:tv" option
+while getopts ":b:m:tuv" option
 do
 	case $option in
 		b)	methode="backup" ; backuptype="$OPTARG" ;;
 		m)	methode="maintenance" ; maintmode="$OPTARG" ;;
 		t)	testmode="yes" ;;
+		u)	methode="update" ;;
 		v)	verbose="yes" ;;
 		*)	log -f "[ERROR] Invalid option: $OPTARG\n" ; usage ; exit 2 ;;
 	esac
@@ -112,7 +129,9 @@ if [ $# -eq 0 ] ; then
 	usage | tee -a ${logdir}/${date}.log ; exit 0
 elif [ -z "$methode" ] ; then
 	log -f "[ERROR] Missing option\n" ; usage ; exit 2
-elif [ -z "$backuptype" ] && [ -z "$maintmode" ] ; then
+elif [ "$methode" == "backup" ] && [ -z "$backuptype" ] ; then
+	log -f "[ERROR] Missing argument\n" ; usage ; exit 2
+elif [ "$methode" == "maintenance" ] && [ -z "$maintmode" ] ; then
 	log -f "[ERROR] Missing argument\n" ; usage ; exit 2
 elif [ "$methode" == "backup" ] && [ "$backuptype" != "all" ] && [ "$backuptype" != "database" ] && [ "$backuptype" != "folder" ] ; then
 	log -f "[ERROR] Wrong backup type: $backuptype\n" ; usage ; exit 2
@@ -122,9 +141,6 @@ fi
 
 # Methode execution #
 case "$methode" in
-	maintenance)
-		maint_mode $maintmode
-		;;
 	backup)
 		maint_mode on
 		case "$backuptype" in
@@ -133,6 +149,13 @@ case "$methode" in
 			folder)		folder_archive ;;
 		esac
 		maint_mode off
+		;;
+	maintenance)
+		maint_mode $maintmode
+		;;
+	update)
+		update_phar
+		;;
 esac
 
 exit 0
