@@ -1,33 +1,35 @@
 #!/bin/bash
 
 ## Parameters ##
-if [ ! -f $(dirname $0)/nextcloud.conf ] ; then
-	echo -e "ERROR: Parameter file $(dirname $0)/nextcloud.conf not found!"
+if [ ! -f $(dirname $0)/$(basename $0).conf ] ; then
+	echo -e "ERROR: Parameter file $(dirname $0)/$(basename $0).conf not found!"
 else
-	. $(dirname $0)/nextcloud.conf
+	. $(dirname $0)/$(basename $0).conf
 fi
 
-## Variables ##
-date=$(date +"%Y%m%d")
+## Declarations ##
 testmode="no"
 verbose="no"
 methode=""
 backuptype=""
 maintmode=""
-dbhost=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $1}')
-dbport=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $2}')
-dbuser=$(grep dbuser $ncdir/config/config.php | awk -F "'" '{print $4}')
-dbpwd=$(grep dbpassword $ncdir/config/config.php | awk -F "'" '{print $4}')
-dbname=$(grep dbname $ncdir/config/config.php | awk -F "'" '{print $4}')
+date=$(date +"%Y%m%d")
+logfile=${logdir}/$(basename $0).log
+dbhost=$(grep dbhost ${ncdir}/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $1}')
+dbport=$(grep dbhost ${ncdir}/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $2}')
+dbuser=$(grep dbuser ${ncdir}/config/config.php | awk -F "'" '{print $4}')
+dbpwd=$(grep dbpassword ${ncdir}/config/config.php | awk -F "'" '{print $4}')
+dbname=$(grep dbname ${ncdir}/config/config.php | awk -F "'" '{print $4}')
 
 ## Functions ##
 # Script usage #
 usage()
 {
-	echo -e "Usage: $(basename $0) [-b all|database|folder] [-m on|off] [-t] [-v]"
+	echo -e "Usage: $(basename $0) [-b all|database|folder] [-m on|off] [-t] [-u] [-v]"
 	echo -e " -b: backup mode"
 	echo -e " -m: maintenance mode"
 	echo -e " -t: test mode (do not execute the operations)"
+	echo -e " -u: update (execute updater.phar)"
 	echo -e " -v: verbose mode (display output to stdout in addition to logs)"
 }
 
@@ -35,11 +37,11 @@ usage()
 log()
 {
 	if [ "$1" == "-f" ] ; then
-		echo -e $2 | tee -a ${logdir}/${date}.log
+		echo -e $2 | tee -a $logfile
 	elif [ "$verbose" == "yes" ] ; then
-		echo -e $1 | tee -a ${logdir}/${date}.log
+		echo -e $1 | tee -a $logfile
 	else
-		echo -e $1 >> ${logdir}/${date}.log
+		echo -e $1 >> $logfile
 	fi
 }
 
@@ -48,12 +50,12 @@ db_dump()
 {
 	log "[INFO] Exporting DataBase"
 	if [ "$testmode" == "no"  ] ; then
-		mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > $bkpdst/nextcloud-sqlbkp_$date.sql 2>>${logdir}/${date}.log
+		mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > ${bkpdst}/nextcloud-sqlbkp_${date}.sql 2>>$logfile
 		if [ $? -ne 0 ] ; then
 			log "[ERROR] DataBase export failed (exit code: $?)"
 			exit 1
 		else
-			ls -l $bkpdst/nextcloud-sqlbkp_$date.sql | awk -F " " '{print $5,$9}' >>${logdir}/${date}.log
+			ls -l ${bkpdst}/nextcloud-sqlbkp_${date}.sql | awk -F " " '{print $5,$9}' >>$logfile
 			log "[OK] DataBase export succeeded"
 		fi
 	fi
@@ -64,12 +66,12 @@ folder_archive()
 {
 	log "[INFO] Archiving folder"
 	if [ "$testmode" == "no" ] ; then
-		tar -czf $bkpdst/nextcloud-dirbkp_$date.tgz --directory="$ncdir" --exclude="$direxcl" . 2>>${logdir}/${date}.log
+		tar -czf ${bkpdst}/nextcloud-dirbkp_${date}.tgz --directory="$ncdir" --exclude="$direxcl" . 2>>$logfile
 		if [ $? -ne 0 ] ; then
 			log "[ERROR] Folder archive failed (exit code: $?)"
 			exit 1
 		else
-			ls -l $bkpdst/nextcloud-dirbkp_$date.tgz | awk -F " " '{print $5,$9}' >>${logdir}/${date}.log
+			ls -l ${bkpdst}/nextcloud-dirbkp_${date}.tgz | awk -F " " '{print $5,$9}' >>$logfile
 			log "[OK] Folder archive succeeded"
 		fi
 	fi
@@ -81,7 +83,7 @@ maint_mode()
 	mode=$(printf '%s\n' "$1" | awk '{ print toupper($0) }')
 	log "[INFO] Setting maintenance mode '$mode'"
 	if [ "$testmode" == "no"  ] ; then
-		sudo -u www-data php $ncdir/occ maintenance:mode --$1 1>/dev/null 2>>${logdir}/${date}.log
+		sudo -u www-data php ${ncdir}/occ maintenance:mode --$1 1>/dev/null 2>>$logfile
 		if [ $? -ne 0 ] ; then
 			log "[ERROR] Maintenance mode '$mode' failed (exit code: $?)"
 			exit 1
@@ -91,17 +93,35 @@ maint_mode()
 	fi
 }
 
+# Updater #
+update_phar()
+{
+	log "[INFO] Updating"
+	if [ "$testmode" == "no" ] ; then
+		sudo -u www-data php ${ncdir}/updater/updater.phar | tee -a $logfile
+		if [ $? -ne 0 ] ; then
+			log "[ERROR] Update failed (exit code: $?)"
+			exit 1
+		else
+			log "[OK] Update succeeded"
+		fi
+	fi
+}
+
 ## Main ##
-touch ${logdir}/${date}.log
+if [ ! -f $logfile ] ; then
+	touch $logfile
+fi
 log "\n----- $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----"
 
 # Options and arguments parsing #
-while getopts ":b:m:tv" option
+while getopts ":b:m:tuv" option
 do
 	case $option in
 		b)	methode="backup" ; backuptype="$OPTARG" ;;
 		m)	methode="maintenance" ; maintmode="$OPTARG" ;;
 		t)	testmode="yes" ;;
+		u)	methode="update" ;;
 		v)	verbose="yes" ;;
 		*)	log -f "[ERROR] Invalid option: $OPTARG\n" ; usage ; exit 2 ;;
 	esac
@@ -109,10 +129,12 @@ done
 
 # Arguments verification #
 if [ $# -eq 0 ] ; then
-	usage | tee -a ${logdir}/${date}.log ; exit 0
+	usage | tee -a $logfile ; exit 0
 elif [ -z "$methode" ] ; then
 	log -f "[ERROR] Missing option\n" ; usage ; exit 2
-elif [ -z "$backuptype" ] && [ -z "$maintmode" ] ; then
+elif [ "$methode" == "backup" ] && [ -z "$backuptype" ] ; then
+	log -f "[ERROR] Missing argument\n" ; usage ; exit 2
+elif [ "$methode" == "maintenance" ] && [ -z "$maintmode" ] ; then
 	log -f "[ERROR] Missing argument\n" ; usage ; exit 2
 elif [ "$methode" == "backup" ] && [ "$backuptype" != "all" ] && [ "$backuptype" != "database" ] && [ "$backuptype" != "folder" ] ; then
 	log -f "[ERROR] Wrong backup type: $backuptype\n" ; usage ; exit 2
@@ -122,9 +144,6 @@ fi
 
 # Methode execution #
 case "$methode" in
-	maintenance)
-		maint_mode $maintmode
-		;;
 	backup)
 		maint_mode on
 		case "$backuptype" in
@@ -133,6 +152,13 @@ case "$methode" in
 			folder)		folder_archive ;;
 		esac
 		maint_mode off
+		;;
+	maintenance)
+		maint_mode $maintmode
+		;;
+	update)
+		update_phar
+		;;
 esac
 
 exit 0
