@@ -1,24 +1,25 @@
 #!/bin/bash
 
 ## Parameters ##
-if [ ! -f $(dirname $0)/nextcloud.conf ] ; then
-	echo -e "ERROR: Parameter file $(dirname $0)/nextcloud.conf not found!"
+if [ ! -f $(dirname $0)/$(basename $0).conf ] ; then
+	echo -e "ERROR: Parameter file $(dirname $0)/$(basename $0).conf not found!"
 else
-	. $(dirname $0)/nextcloud.conf
+	. $(dirname $0)/$(basename $0).conf
 fi
 
-## Variables ##
-date=$(date +"%Y%m%d")
+## Declarations ##
 testmode="no"
 verbose="no"
 methode=""
 backuptype=""
 maintmode=""
-dbhost=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $1}')
-dbport=$(grep dbhost $ncdir/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $2}')
-dbuser=$(grep dbuser $ncdir/config/config.php | awk -F "'" '{print $4}')
-dbpwd=$(grep dbpassword $ncdir/config/config.php | awk -F "'" '{print $4}')
-dbname=$(grep dbname $ncdir/config/config.php | awk -F "'" '{print $4}')
+date=$(date +"%Y%m%d")
+logfile=${logdir}/$(basename $0).log
+dbhost=$(grep dbhost ${ncdir}/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $1}')
+dbport=$(grep dbhost ${ncdir}/config/config.php | awk -F "'" '{print $4}' | awk -F ":" '{print $2}')
+dbuser=$(grep dbuser ${ncdir}/config/config.php | awk -F "'" '{print $4}')
+dbpwd=$(grep dbpassword ${ncdir}/config/config.php | awk -F "'" '{print $4}')
+dbname=$(grep dbname ${ncdir}/config/config.php | awk -F "'" '{print $4}')
 
 ## Functions ##
 # Script usage #
@@ -36,11 +37,11 @@ usage()
 log()
 {
 	if [ "$1" == "-f" ] ; then
-		echo -e $2 | tee -a ${logdir}/${date}.log
+		echo -e $2 | tee -a $logfile
 	elif [ "$verbose" == "yes" ] ; then
-		echo -e $1 | tee -a ${logdir}/${date}.log
+		echo -e $1 | tee -a $logfile
 	else
-		echo -e $1 >> ${logdir}/${date}.log
+		echo -e $1 >> $logfile
 	fi
 }
 
@@ -49,12 +50,12 @@ db_dump()
 {
 	log "[INFO] Exporting DataBase"
 	if [ "$testmode" == "no"  ] ; then
-		mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > $bkpdst/nextcloud-sqlbkp_$date.sql 2>>${logdir}/${date}.log
+		mysqldump --single-transaction -h "$dbhost" -P "$dbport" -u "$dbuser" -p"$dbpwd" "$dbname" > ${bkpdst}/nextcloud-sqlbkp_${date}.sql 2>>$logfile
 		if [ $? -ne 0 ] ; then
 			log "[ERROR] DataBase export failed (exit code: $?)"
 			exit 1
 		else
-			ls -l $bkpdst/nextcloud-sqlbkp_$date.sql | awk -F " " '{print $5,$9}' >>${logdir}/${date}.log
+			ls -l ${bkpdst}/nextcloud-sqlbkp_${date}.sql | awk -F " " '{print $5,$9}' >>$logfile
 			log "[OK] DataBase export succeeded"
 		fi
 	fi
@@ -65,12 +66,12 @@ folder_archive()
 {
 	log "[INFO] Archiving folder"
 	if [ "$testmode" == "no" ] ; then
-		tar -czf $bkpdst/nextcloud-dirbkp_$date.tgz --directory="$ncdir" --exclude="$direxcl" . 2>>${logdir}/${date}.log
+		tar -czf ${bkpdst}/nextcloud-dirbkp_${date}.tgz --directory="$ncdir" --exclude="$direxcl" . 2>>$logfile
 		if [ $? -ne 0 ] ; then
 			log "[ERROR] Folder archive failed (exit code: $?)"
 			exit 1
 		else
-			ls -l $bkpdst/nextcloud-dirbkp_$date.tgz | awk -F " " '{print $5,$9}' >>${logdir}/${date}.log
+			ls -l ${bkpdst}/nextcloud-dirbkp_${date}.tgz | awk -F " " '{print $5,$9}' >>$logfile
 			log "[OK] Folder archive succeeded"
 		fi
 	fi
@@ -82,7 +83,7 @@ maint_mode()
 	mode=$(printf '%s\n' "$1" | awk '{ print toupper($0) }')
 	log "[INFO] Setting maintenance mode '$mode'"
 	if [ "$testmode" == "no"  ] ; then
-		sudo -u www-data php $ncdir/occ maintenance:mode --$1 1>/dev/null 2>>${logdir}/${date}.log
+		sudo -u www-data php ${ncdir}/occ maintenance:mode --$1 1>/dev/null 2>>$logfile
 		if [ $? -ne 0 ] ; then
 			log "[ERROR] Maintenance mode '$mode' failed (exit code: $?)"
 			exit 1
@@ -97,7 +98,7 @@ update_phar()
 {
 	log "[INFO] Updating"
 	if [ "$testmode" == "no" ] ; then
-		sudo -u www-data php $ncdir/updater/updater.phar | tee -a ${logdir}/${date}.log
+		sudo -u www-data php ${ncdir}/updater/updater.phar | tee -a $logfile
 		if [ $? -ne 0 ] ; then
 			log "[ERROR] Update failed (exit code: $?)"
 			exit 1
@@ -108,7 +109,9 @@ update_phar()
 }
 
 ## Main ##
-touch ${logdir}/${date}.log
+if [ ! -f $logfile ] ; then
+	touch $logfile
+fi
 log "\n----- $(date +'%Y-%m-%d') $(date +'%H-%M-%S') -----"
 
 # Options and arguments parsing #
@@ -126,7 +129,7 @@ done
 
 # Arguments verification #
 if [ $# -eq 0 ] ; then
-	usage | tee -a ${logdir}/${date}.log ; exit 0
+	usage | tee -a $logfile ; exit 0
 elif [ -z "$methode" ] ; then
 	log -f "[ERROR] Missing option\n" ; usage ; exit 2
 elif [ "$methode" == "backup" ] && [ -z "$backuptype" ] ; then
